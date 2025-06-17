@@ -9,7 +9,7 @@ request/response validation and interacts with LLMs via the `llm` wrappers
 
 Refer to `architecture.puml` for a visual overview.
 """
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from contextlib import asynccontextmanager
 
 import anyio
@@ -35,6 +35,7 @@ from api.agent_server.models import (
 from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
+from api.agent_server.dummy_template_impl import DummyTemplateAgentImplementation
 from api.config import CONFIG
 
 from log import get_logger, configure_uvicorn_logging, set_trace_id, clear_trace_id
@@ -98,6 +99,7 @@ class SessionManager:
         client: dagger.Client,
         request: AgentRequest,
         agent_class: type[T],
+        template_id: Optional[str] = None,
         *args,
         **kwargs
     ) -> T:
@@ -113,6 +115,7 @@ class SessionManager:
             application_id=request.application_id,
             trace_id=request.trace_id,
             settings=request.settings,
+            template_id=template_id,
             *args,
             **kwargs
         )
@@ -130,6 +133,7 @@ session_manager = SessionManager()
 async def run_agent[T: AgentInterface](
     request: AgentRequest,
     agent_class: type[T],
+    template_id: Optional[str] = None,
     *args,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
@@ -137,7 +141,7 @@ async def run_agent[T: AgentInterface](
 
     async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Establish Dagger connection for the agent's execution context
-        agent = session_manager.get_or_create_session(client, request, agent_class, *args, **kwargs)
+        agent = session_manager.get_or_create_session(client, request, agent_class, template_id=template_id, *args, **kwargs)
 
         event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
         keep_alive_tx = event_tx.clone()  # Clone the sender for use in the keep-alive task
@@ -281,10 +285,18 @@ async def message(
         agent_type = {
             "template_diff": TemplateDiffAgentImplementation,
             "trpc_agent": TrpcAgentSession,
+            "dummy_template": DummyTemplateAgentImplementation,
         }
         
+        # Use template_id to select the appropriate agent implementation
+        if template_id in agent_type:
+            selected_agent = agent_type[template_id]
+        else:
+            # Fallback to trpc_agent as the default implementation
+            selected_agent = agent_type["trpc_agent"]
+        
         return StreamingResponse(
-            run_agent(request, agent_type[CONFIG.agent_type]),
+            run_agent(request, selected_agent, template_id=template_id),
             media_type="text/event-stream"
         )
 

@@ -82,15 +82,16 @@ class ApplicationContext(Context):
 
 class FSMApplication:
 
-    def __init__(self, client: dagger.Client, fsm: StateMachine[ApplicationContext, FSMEvent]):
+    def __init__(self, client: dagger.Client, fsm: StateMachine[ApplicationContext, FSMEvent], template_id: Optional[str] = None):
         self.fsm = fsm
         self.client = client
+        self.template_id = template_id or "trpc_agent"
 
     @classmethod
-    async def load(cls, client: dagger.Client, data: MachineCheckpoint) -> Self:
-        root = await cls.make_states(client)
+    async def load(cls, client: dagger.Client, data: MachineCheckpoint, template_id: Optional[str] = None) -> Self:
+        root = await cls.make_states(client, template_id=template_id)
         fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
-        return cls(client, fsm)
+        return cls(client, fsm, template_id)
 
     @classmethod
     def base_execution_plan(cls) -> str:
@@ -102,16 +103,16 @@ class FSMApplication:
         ])
 
     @classmethod
-    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:
+    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any] | None = None, template_id: Optional[str] = None) -> Self:
         """Create the state machine for the application"""
-        states = await cls.make_states(client, settings)
+        states = await cls.make_states(client, settings, template_id)
         context = ApplicationContext(user_prompt=user_prompt)
         fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
         await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
-        return cls(client, fsm)
+        return cls(client, fsm, template_id)
 
     @classmethod
-    async def make_states(cls, client: dagger.Client, settings: Dict[str, Any] | None = None) -> State[ApplicationContext, FSMEvent]:
+    async def make_states(cls, client: dagger.Client, settings: Dict[str, Any] | None = None, template_id: Optional[str] = None) -> State[ApplicationContext, FSMEvent]:
         def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
             files = {}
             for node in solution.get_trajectory():
@@ -136,10 +137,16 @@ class FSMApplication:
         llm = get_llm_client()
         vlm = get_llm_client(model_name="gemini-flash-lite")
         model_params = settings or {}
+        
+        from api.config import CONFIG
+        template_id = template_id or "trpc_agent"
+        template_relative_path = CONFIG.template_paths.get(template_id, "trpc_agent/template")
+        template_dir_path = f"./{template_relative_path}"
+        
         workspace = await Workspace.create(
             client=client,
             base_image="oven/bun:1.2.5-alpine",
-            context=client.host().directory("./trpc_agent/template"),
+            context=client.host().directory(template_dir_path),
             setup_cmd=[["bun", "install"]],
         )
 
@@ -300,7 +307,10 @@ class FSMApplication:
         logger.debug("SERVER get_diff_with: Initializing Dagger context from empty directory")
         context = self.client.directory()
 
-        gitignore_path = "./trpc_agent/template/.gitignore"
+        from api.config import CONFIG
+        template_id = getattr(self, 'template_id', 'trpc_agent')
+        template_relative_path = CONFIG.template_paths.get(template_id, "trpc_agent/template")
+        gitignore_path = f"./{template_relative_path}/.gitignore"
         try:
             gitignore_file = self.client.host().file(gitignore_path)
             context = context.with_file(".gitignore", gitignore_file)
@@ -317,7 +327,9 @@ class FSMApplication:
         workspace = await Workspace.create(self.client, base_image="alpine/git", context=context)
         logger.debug("SERVER get_diff_with: Dagger workspace created with initial snapshot context.")
 
-        template_dir_path = "./trpc_agent/template"
+        template_id = getattr(self, 'template_id', 'trpc_agent')
+        template_relative_path = CONFIG.template_paths.get(template_id, "trpc_agent/template")
+        template_dir_path = f"./{template_relative_path}"
         try:
             template_dir = self.client.host().directory(template_dir_path)
             workspace.ctr = workspace.ctr.with_directory(".", template_dir)
