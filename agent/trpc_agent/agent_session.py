@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 class StateMetadata(TypedDict):
     app_name: str | None
     template_diff_sent: bool
+    template_id: str | None
 
 
 class AgentState(TypedDict):
@@ -117,6 +118,7 @@ class TrpcAgentSession(AgentInterface):
             metadata: StateMetadata = {
                 "app_name": None,
                 "template_diff_sent": False,
+                "template_id": request.template_id,
             }
 
             async def emit_intermediate_message(message: str) -> None:
@@ -144,6 +146,8 @@ class TrpcAgentSession(AgentInterface):
                     snapshot_saver.save_snapshot(trace_id=self._snapshot_key, key="fsm_enter", data=req_fsm_state)
                 if (req_metadata := request.agent_state.get("metadata")):
                     metadata.update(req_metadata)
+                    if "template_id" not in req_metadata or req_metadata.get("template_id") is None:
+                        metadata["template_id"] = request.template_id
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
             
