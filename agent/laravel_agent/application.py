@@ -114,7 +114,11 @@ class FSMApplication:
 
     @classmethod
     def template_path(cls) -> str:
-        return "./laravel_agent/template"
+        # Get the absolute path to avoid relative path issues
+        current_file = os.path.abspath(__file__)
+        parent_dir = os.path.dirname(current_file)
+        template_path = os.path.join(parent_dir, "template")
+        return template_path
 
     @classmethod
     async def start_fsm(
@@ -171,7 +175,16 @@ class FSMApplication:
             beam_width=3,
             max_depth=50,
             system_prompt=playbooks.APPLICATION_SYSTEM_PROMPT,
-            files_allowed=["resources/js/pages/", "app/Http/Controllers/Auth/"],
+            files_allowed=[
+                "resources/js/pages/",
+                "resources/js/components/",
+                "app/Http/Controllers/",
+                "app/Models/",
+                "routes/",
+                "resources/views/",
+                "database/migrations/",
+                "app/Providers/"
+            ],
             event_callback=event_callback,
         )
 
@@ -370,8 +383,20 @@ class FSMApplication:
 
 
 async def main(user_prompt="Add header to welcome page that says Hello World"):
+    import tempfile
+    
+    # Configure Dagger logging based on environment variable
+    dagger_config = {}
+    if os.getenv('DAGGER_VERBOSE'):
+        # Create a temporary file for Dagger logs
+        dagger_log_file = tempfile.NamedTemporaryFile(mode='w+', suffix='_dagger.log', delete=False)
+        logger.info(f"Dagger logs will be written to: {dagger_log_file.name}")
+        dagger_config['log_output'] = dagger_log_file
+    else:
+        dagger_config['log_output'] = open(os.devnull, "w")
+    
     async with dagger.Connection(
-        dagger.Config(log_output=open(os.devnull, "w"))
+        dagger.Config(**dagger_config)
     ) as client:
         fsm_app: FSMApplication = await FSMApplication.start_fsm(client, user_prompt)
 

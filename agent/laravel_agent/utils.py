@@ -36,7 +36,12 @@ _DOCKER_EXT_PACKAGES = [
     "soap",
 ]
 
-async def create_workspace(client: dagger.Client, context: dagger.Directory, protected: list[str] = [], allowed: list[str] = []):
+async def create_workspace(client: dagger.Client, context: dagger.Directory, protected: list[str] = None, allowed: list[str] = None):
+    if protected is None:
+        protected = []
+    if allowed is None:
+        allowed = []
+    
     ctr = (
         client
         .container()

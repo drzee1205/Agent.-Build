@@ -11,26 +11,19 @@ Refer to `architecture.puml` for a visual overview.
 """
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
-
+import os
 import anyio
+import dagger
+import json
+import uvicorn
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from laravel_agent.agent_session import LaravelAgentSession
-import uvicorn
 from fire import Fire
-import os
-# Disable dagger telemetry
-os.environ["DO_NOT_TRACK"] = "1"
-os.environ["OTEL_TRACES_EXPORTER"] = "none"
-os.environ["OTEL_METRICS_EXPORTER"] = "none"
-os.environ["OTEL_LOGS_EXPORTER"] = "none"
-
-import dagger
-import json
 from brotli_asgi import BrotliMiddleware
 from dotenv import load_dotenv
 
+from laravel_agent.agent_session import LaravelAgentSession
 from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
@@ -45,8 +38,13 @@ from trpc_agent.agent_session import TrpcAgentSession
 from nicegui_agent.agent_session import NiceguiAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
-
 from log import get_logger, configure_uvicorn_logging, set_trace_id, clear_trace_id
+
+# Disable dagger telemetry
+os.environ["DO_NOT_TRACK"] = "1"
+os.environ["OTEL_TRACES_EXPORTER"] = "none"
+os.environ["OTEL_METRICS_EXPORTER"] = "none"
+os.environ["OTEL_LOGS_EXPORTER"] = "none"
 
 logger = get_logger(__name__)
 
@@ -152,7 +150,20 @@ async def run_agent[T: AgentInterface](
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
 
-    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+    import tempfile
+    import os
+    
+    # Configure Dagger logging based on environment variable
+    dagger_config = {}
+    if os.getenv('DAGGER_VERBOSE'):
+        # Create a temporary file for Dagger logs
+        dagger_log_file = tempfile.NamedTemporaryFile(mode='w+', suffix='_dagger_server.log', delete=False)
+        logger.info(f"Dagger server logs will be written to: {dagger_log_file.name}")
+        dagger_config['log_output'] = dagger_log_file
+    else:
+        dagger_config['log_output'] = open(os.devnull, "w")
+    
+    async with dagger.Connection(dagger.Config(**dagger_config)) as client:
         # Establish Dagger connection for the agent's execution context
         agent = session_manager.get_or_create_session(client, request, agent_class, *args, **kwargs)
 
