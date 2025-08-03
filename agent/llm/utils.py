@@ -11,6 +11,8 @@ from llm.models_config import MODELS_MAP, ALL_MODEL_NAMES, OLLAMA_MODEL_NAMES, A
 
 from log import get_logger
 from hashlib import md5
+from core.cache_manager import get_cached_llm_response, cache_llm_response, get_cache_manager
+from core.performance_monitor import monitor_performance, async_performance_context
 
 try:
     from llm.ollama_client import OllamaLLM
@@ -43,15 +45,49 @@ def extract_tag(source: str | None, tag: str):
         return match.group(1).strip()
     return None
 
+@monitor_performance(operation="llm.loop_completion", include_args=False)
 async def loop_completion(m_client: AsyncLLM, messages: list[Message], system_prompt: str | None = None, **kwargs) -> Message:
-    content: list[ContentBlock] = []
-    while True:
-        payload = messages + [Message(role="assistant", content=content)] if content else messages
-        completion = await m_client.completion(messages=payload, system_prompt=system_prompt, **kwargs)
-        content.extend(completion.content)
-        if completion.stop_reason != "max_tokens":
-            break
-    return Message(role="assistant", content=merge_text(content))
+    # Generate cache key for the completion request
+    cache_key_data = {
+        'messages': [{'role': m.role, 'content': str(m.content)[:500]} for m in messages],  # Truncate for key
+        'system_prompt': system_prompt,
+        'model': getattr(m_client, 'default_model', 'unknown'),
+        'kwargs': sorted(kwargs.items()) if kwargs else {}
+    }
+    
+    # Try to get cached response first
+    import json
+    cache_key = md5(json.dumps(cache_key_data, sort_keys=True, default=str).encode()).hexdigest()
+    
+    async with async_performance_context("llm.cache_lookup"):
+        cached_response = get_cache_manager().get(cache_key)
+        if cached_response:
+            logger.debug("Using cached LLM response", cache_key=cache_key[:16])
+            return cached_response
+    
+    # If not cached, perform the completion
+    async with async_performance_context("llm.completion_generation"):
+        content: list[ContentBlock] = []
+        while True:
+            payload = messages + [Message(role="assistant", content=content)] if content else messages
+            completion = await m_client.completion(messages=payload, system_prompt=system_prompt, **kwargs)
+            content.extend(completion.content)
+            if completion.stop_reason != "max_tokens":
+                break
+        
+        result = Message(role="assistant", content=merge_text(content))
+    
+    # Cache the result
+    async with async_performance_context("llm.cache_store"):
+        get_cache_manager().set(
+            cache_key, 
+            result, 
+            ttl=3600,  # 1 hour TTL for LLM responses
+            tags=["llm", getattr(m_client, 'default_model', 'unknown')]
+        )
+        logger.debug("Cached LLM response", cache_key=cache_key[:16])
+    
+    return result
 
 
 def _guess_llm_backend(model_name: str) -> LLMBackend:

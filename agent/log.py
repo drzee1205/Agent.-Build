@@ -72,6 +72,22 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_data['exception'] = self.formatException(record.exc_info)
 
+        # Add structured data from extra fields
+        if hasattr(record, 'extra_data'):
+            log_data.update(record.extra_data)
+        
+        # Add performance metrics if available
+        if hasattr(record, 'duration'):
+            log_data['duration_ms'] = record.duration
+        
+        # Add operation context if available
+        if hasattr(record, 'operation'):
+            log_data['operation'] = record.operation
+        
+        # Add error severity if available
+        if hasattr(record, 'severity'):
+            log_data['severity'] = record.severity
+
         return json.dumps(log_data)
 
 # Standard text formatter
@@ -108,6 +124,65 @@ def _init_logging():
 _init_logging()
 
 
+class StructuredLogger:
+    """Enhanced logger with structured logging capabilities."""
+    
+    def __init__(self, logger: logging.Logger):
+        self._logger = logger
+    
+    def _log_with_extra(self, level: int, msg: str, **kwargs):
+        """Log with structured extra data."""
+        extra = {}
+        if kwargs:
+            extra['extra_data'] = kwargs
+        self._logger.log(level, msg, extra=extra)
+    
+    def debug(self, msg: str, **kwargs):
+        self._log_with_extra(logging.DEBUG, msg, **kwargs)
+    
+    def info(self, msg: str, **kwargs):
+        self._log_with_extra(logging.INFO, msg, **kwargs)
+    
+    def warning(self, msg: str, **kwargs):
+        self._log_with_extra(logging.WARNING, msg, **kwargs)
+    
+    def error(self, msg: str, **kwargs):
+        self._log_with_extra(logging.ERROR, msg, **kwargs)
+    
+    def critical(self, msg: str, **kwargs):
+        self._log_with_extra(logging.CRITICAL, msg, **kwargs)
+    
+    def exception(self, msg: str, **kwargs):
+        extra = {}
+        if kwargs:
+            extra['extra_data'] = kwargs
+        self._logger.exception(msg, extra=extra)
+    
+    def log_operation(self, operation: str, level: int = logging.INFO, **kwargs):
+        """Log an operation with structured context."""
+        extra = {'operation': operation}
+        if kwargs:
+            extra['extra_data'] = kwargs
+        self._logger.log(level, f"Operation: {operation}", extra=extra)
+    
+    def log_performance(self, operation: str, duration_ms: float, **kwargs):
+        """Log performance metrics for an operation."""
+        extra = {
+            'operation': operation,
+            'duration': duration_ms
+        }
+        if kwargs:
+            extra['extra_data'] = kwargs
+        self._logger.info(f"Performance: {operation} completed in {duration_ms:.2f}ms", extra=extra)
+    
+    def log_error_with_severity(self, msg: str, severity: str, **kwargs):
+        """Log an error with severity level."""
+        extra = {'severity': severity}
+        if kwargs:
+            extra['extra_data'] = kwargs
+        self._logger.error(msg, extra=extra)
+
+
 def get_logger(name):
     _logger = logging.getLogger(name)
 
@@ -116,6 +191,12 @@ def get_logger(name):
         _logger.setLevel(logging.DEBUG)
 
     return _logger
+
+
+def get_structured_logger(name):
+    """Get a structured logger instance."""
+    base_logger = get_logger(name)
+    return StructuredLogger(base_logger)
 
 
 logger = get_logger(__name__)

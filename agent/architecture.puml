@@ -23,7 +23,7 @@ package "agent" {
 
     folder "llm\nLLM Wrappers" as LLM
 
-    folder "stash_bot" as StashBot <<Deprecated>>
+
 
     file "log.py\nGlobal Logging" as Log
 
@@ -60,4 +60,4 @@ package "agent" {
     ' Cli ..> Log : Uses
 }
 
-@enduml 
+@enduml
