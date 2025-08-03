@@ -2,14 +2,12 @@
 Tests for the cache management system.
 """
 
-import pytest
 import time
 import tempfile
-import shutil
 from pathlib import Path
 from core.cache_manager import (
     CacheEntry, MemoryCache, FileCache, CacheManager,
-    cached, get_cache_manager
+    cached
 )
 
 

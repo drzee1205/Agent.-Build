@@ -7,7 +7,7 @@ import asyncio
 import time
 from core.performance_monitor import (
     PerformanceMonitor, PerformanceMetric, monitor_performance,
-    performance_context, async_performance_context, get_monitor
+    performance_context, async_performance_context
 )
 
 
