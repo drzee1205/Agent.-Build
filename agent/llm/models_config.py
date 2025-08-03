@@ -78,6 +78,15 @@ ANTHROPIC_MODELS = {
     },
 }
 
+MISTRAL_MODELS = {
+    "mistral-large": {"mistral": "mistral-large-2411"},      # Premium reasoning
+    "codestral": {"mistral": "codestral-latest"},            # Code generation - BEST for coding!
+    "mistral-small": {"mistral": "mistral-small-2409"},      # Cost-effective
+    "ministral-8b": {"mistral": "ministral-8b-2410"},       # Ultra efficient
+    "ministral-3b": {"mistral": "ministral-3b-2410"},       # Edge deployment
+    "pixtral": {"mistral": "pixtral-large-2411"},           # Vision tasks
+}
+
 GEMINI_MODELS = {
     "gemini-pro": {
         "gemini": "gemini-2.5-pro-preview-05-06",
@@ -115,15 +124,16 @@ OLLAMA_MODELS = {
 
 MODELS_MAP: Dict[str, Dict[str, str]] = {
     **ANTHROPIC_MODELS,
+    **MISTRAL_MODELS,
     **GEMINI_MODELS,
     **OLLAMA_MODELS,
 }
 
 DEFAULT_MODELS = {
-    ModelCategory.BEST_CODING: "sonnet",           # slow, high quality
+    ModelCategory.BEST_CODING: "codestral",        # Mistral's coding specialist - excellent quality
     ModelCategory.UNIVERSAL: "gemini-flash",       # medium speed for FSM tools
     ModelCategory.ULTRA_FAST: "gemini-flash-lite", # ultra fast for commit names
-    ModelCategory.VISION: "gemini-flash-lite",     # vision tasks
+    ModelCategory.VISION: "gemini-flash",          # vision tasks
 }
 
 OLLAMA_DEFAULT_MODELS = {
@@ -149,7 +159,8 @@ def get_model_for_category(category: str) -> str:
     return DEFAULT_MODELS.get(category, "sonnet")
 
 ANTHROPIC_MODEL_NAMES = list(ANTHROPIC_MODELS.keys())
+MISTRAL_MODEL_NAMES = list(MISTRAL_MODELS.keys())
 GEMINI_MODEL_NAMES = list(GEMINI_MODELS.keys())
 OLLAMA_MODEL_NAMES = list(OLLAMA_MODELS.keys())
 
-ALL_MODEL_NAMES = ANTHROPIC_MODEL_NAMES + GEMINI_MODEL_NAMES + OLLAMA_MODEL_NAMES
+ALL_MODEL_NAMES = ANTHROPIC_MODEL_NAMES + MISTRAL_MODEL_NAMES + GEMINI_MODEL_NAMES + OLLAMA_MODEL_NAMES

@@ -7,7 +7,7 @@ from llm.common import AsyncLLM, Message, TextRaw, ContentBlock
 from llm.anthropic_client import AnthropicLLM
 from llm.cached import CachedLLM, CacheMode
 from llm.gemini import GeminiLLM
-from llm.models_config import MODELS_MAP, ALL_MODEL_NAMES, OLLAMA_MODEL_NAMES, ANTHROPIC_MODEL_NAMES, GEMINI_MODEL_NAMES, ModelCategory, get_model_for_category
+from llm.models_config import MODELS_MAP, ALL_MODEL_NAMES, OLLAMA_MODEL_NAMES, ANTHROPIC_MODEL_NAMES, MISTRAL_MODEL_NAMES, GEMINI_MODEL_NAMES, ModelCategory, get_model_for_category
 
 from log import get_logger
 from hashlib import md5
@@ -19,12 +19,17 @@ try:
 except ImportError:
     OllamaLLM = None
 
+try:
+    from llm.mistral_client import MistralClient
+except ImportError:
+    MistralClient = None
+
 logger = get_logger(__name__)
 
 # Cache for LLM clients
 llm_clients_cache: Dict[str, AsyncLLM] = {}
 
-LLMBackend = Literal["bedrock", "anthropic", "gemini", "ollama"]
+LLMBackend = Literal["bedrock", "anthropic", "mistral", "gemini", "ollama"]
 
 
 def merge_text(content: list[ContentBlock]) -> list[ContentBlock]:
@@ -102,6 +107,10 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
             return "anthropic"
         # that is rare case, but may be non-trivial AWS config, try Bedrock again
         return "bedrock"
+    elif model_name in MISTRAL_MODEL_NAMES:
+        if os.getenv("MISTRAL_API_KEY"):
+            return "mistral"
+        raise ValueError("Mistral backend requires MISTRAL_API_KEY to be set")
     elif model_name in GEMINI_MODEL_NAMES:
         if os.getenv("GEMINI_API_KEY"):
             return "gemini"
@@ -136,7 +145,7 @@ def get_llm_client(
     If a client with the same parameters already exists, it will be returned.
 
     Args:
-        backend: LLM backend provider, either "bedrock", "anthropic", "gemini", or "ollama"
+        backend: LLM backend provider, either "bedrock", "anthropic", "mistral", "gemini", or "ollama"
         model_name: Specific model name to use (overrides category)
         category: Model category ("best_coding", "universal", "ultra_fast", "vision") for automatic selection
         cache_mode: Cache mode, either "off", "record", or "replay"
@@ -180,6 +189,15 @@ def get_llm_client(
         case "bedrock" | "anthropic":
             base_client = AsyncAnthropicBedrock(**client_params) if backend == "bedrock" else AsyncAnthropic(**client_params)
             client = AnthropicLLM(base_client, default_model=chosen_model)
+        case "mistral":
+            if MistralClient is None:
+                raise ValueError("Mistral backend requires mistral_client to be available")
+            from llm.mistral_client import get_mistral_client, MistralConfig
+            api_key = client_params.get("api_key") or os.getenv("MISTRAL_API_KEY")
+            if not api_key:
+                raise ValueError("Mistral backend requires MISTRAL_API_KEY to be set")
+            config = MistralConfig(api_key=api_key, **{k: v for k, v in client_params.items() if k != "api_key"})
+            client = MistralClient(config)
         case "gemini":
             client_params["model_name"] = chosen_model
             client = GeminiLLM(**client_params)
