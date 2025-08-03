@@ -13,10 +13,10 @@ from llm.common import Tool, ToolUse, ToolUseResult, TextRaw
 from llm.utils import get_ultra_fast_llm_client
 from log import get_logger
 from core.error_handling import (
-    AgentError, LLMError, WorkspaceError, ValidationError,
+    LLMError, ValidationError,
     with_async_error_handling, ErrorSeverity, validate_input
 )
-from core.performance_monitor import monitor_performance, async_performance_context
+from core.performance_monitor import monitor_performance
 
 logger = get_logger(__name__)
 
@@ -37,7 +37,7 @@ class BaseData:
             )
         if self.messages[0].role != "assistant":
             raise ValidationError(
-                f"Expected assistant role in message",
+                "Expected assistant role in message",
                 severity=ErrorSeverity.HIGH,
                 context={"actual_role": self.messages[0].role}
             )
@@ -144,7 +144,7 @@ class LLMActor(Protocol):
             except Exception as e:
                 logger.error(f"Error processing node in run_llm: {str(e)}")
                 raise LLMError(
-                    f"Failed to process LLM completion for node",
+                    "Failed to process LLM completion for node",
                     severity=ErrorSeverity.HIGH,
                     context={"node_id": id(node), "system_prompt": system_prompt},
                     cause=e

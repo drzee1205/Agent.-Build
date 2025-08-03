@@ -8,6 +8,7 @@ success rates, and resource usage across key operations.
 import time
 import functools
 import asyncio
+import atexit
 from typing import Dict, List, Optional, Callable, TypeVar, ParamSpec, Any
 from dataclasses import dataclass, field
 from collections import defaultdict, deque
@@ -326,7 +327,6 @@ def reset_performance_metrics():
 
 
 # Optional: Automatically log performance summary on module exit
-import atexit
 
 def safe_log_performance_summary():
     """Safely log performance summary, handling closed file errors."""

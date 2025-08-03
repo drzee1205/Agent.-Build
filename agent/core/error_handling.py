@@ -243,7 +243,7 @@ class ErrorRecovery:
                     func._failure_count = 0
                     return result
                     
-                except expected_exception as e:
+                except expected_exception:
                     func._failure_count += 1
                     func._last_failure_time = time.time()
                     
@@ -300,4 +300,3 @@ def validate_input(
             severity=severity,
             context={"value": str(value)[:100]}
         )
-

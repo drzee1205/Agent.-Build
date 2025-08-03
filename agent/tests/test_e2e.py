@@ -173,6 +173,7 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True, template_id=Non
                     # Clean up Docker containers
                     stop_docker_compose(temp_dir, container_names["project_name"])
 
+@pytest.mark.skipif(requires_llm_provider(), reason=requires_llm_provider_reason)
 @pytest.mark.parametrize("template_id", [
     pytest.param("nicegui_agent", marks=pytest.mark.nicegui),
 ])

@@ -11,7 +11,7 @@ from llm.models_config import MODELS_MAP, ALL_MODEL_NAMES, OLLAMA_MODEL_NAMES, A
 
 from log import get_logger
 from hashlib import md5
-from core.cache_manager import get_cached_llm_response, cache_llm_response, get_cache_manager
+from core.cache_manager import get_cache_manager
 from core.performance_monitor import monitor_performance, async_performance_context
 
 try:
@@ -192,7 +192,7 @@ def get_llm_client(
         case "mistral":
             if MistralClient is None:
                 raise ValueError("Mistral backend requires mistral_client to be available")
-            from llm.mistral_client import get_mistral_client, MistralConfig
+            from llm.mistral_client import MistralConfig
             api_key = client_params.get("api_key") or os.getenv("MISTRAL_API_KEY")
             if not api_key:
                 raise ValueError("Mistral backend requires MISTRAL_API_KEY to be set")
