@@ -12,6 +12,11 @@ from abc import ABC, abstractmethod
 from llm.common import Tool, ToolUse, ToolUseResult, TextRaw
 from llm.utils import get_ultra_fast_llm_client
 from log import get_logger
+from core.error_handling import (
+    AgentError, LLMError, WorkspaceError, ValidationError,
+    with_async_error_handling, ErrorSeverity, validate_input
+)
+from core.performance_monitor import monitor_performance, async_performance_context
 
 logger = get_logger(__name__)
 
@@ -25,9 +30,17 @@ class BaseData:
 
     def head(self) -> Message:
         if (num_messages := len(self.messages)) != 1:
-            raise ValueError(f"Expected 1 got {num_messages} messages: {self.messages}")
+            raise ValidationError(
+                f"Expected 1 got {num_messages} messages",
+                severity=ErrorSeverity.HIGH,
+                context={"num_messages": num_messages, "messages": str(self.messages)[:200]}
+            )
         if self.messages[0].role != "assistant":
-            raise ValueError(f"Expected assistant role in message: {self.messages}")
+            raise ValidationError(
+                f"Expected assistant role in message",
+                severity=ErrorSeverity.HIGH,
+                context={"actual_role": self.messages[0].role}
+            )
         return self.messages[0]
 
     @property
@@ -98,37 +111,67 @@ class BaseActor(statemachine.Actor):
 class LLMActor(Protocol):
     llm: AsyncLLM
 
+    @monitor_performance(operation="llm.run_llm", include_args=False)
+    @with_async_error_handling(error_context={"operation": "run_llm"})
     async def run_llm(
         self, nodes: list[Node[BaseData]], system_prompt: str | None = None, **kwargs
     ) -> list[Node[BaseData]]:
+        validate_input(
+            nodes,
+            lambda x: isinstance(x, list) and len(x) > 0,
+            "Nodes list must be non-empty",
+            ErrorSeverity.HIGH
+        )
+        
         async def node_fn(
             node: Node[BaseData], tx: MemoryObjectSendStream[Node[BaseData]]
         ):
-            history = [m for n in node.get_trajectory() for m in n.data.messages]
-            new_node = Node[BaseData](
-                data=BaseData(
-                    workspace=node.data.workspace.clone(),
-                    messages=[
-                        await loop_completion(
-                            self.llm, history, system_prompt=system_prompt, **kwargs
-                        )
-                    ],
-                ),
-                parent=node,
-            )
-            async with tx:
-                await tx.send(new_node)
+            try:
+                history = [m for n in node.get_trajectory() for m in n.data.messages]
+                new_node = Node[BaseData](
+                    data=BaseData(
+                        workspace=node.data.workspace.clone(),
+                        messages=[
+                            await loop_completion(
+                                self.llm, history, system_prompt=system_prompt, **kwargs
+                            )
+                        ],
+                    ),
+                    parent=node,
+                )
+                async with tx:
+                    await tx.send(new_node)
+            except Exception as e:
+                logger.error(f"Error processing node in run_llm: {str(e)}")
+                raise LLMError(
+                    f"Failed to process LLM completion for node",
+                    severity=ErrorSeverity.HIGH,
+                    context={"node_id": id(node), "system_prompt": system_prompt},
+                    cause=e
+                )
 
         result = []
         tx, rx = anyio.create_memory_object_stream[Node[BaseData]]()
-        async with anyio.create_task_group() as tg:
-            for node in nodes:
-                tg.start_soon(node_fn, node, tx.clone())
-            tx.close()
-            async with rx:
-                async for new_node in rx:
-                    new_node.parent.children.append(new_node)  # pyright: ignore[reportOptionalMemberAccess]
-                    result.append(new_node)
+        try:
+            async with anyio.create_task_group() as tg:
+                for node in nodes:
+                    tg.start_soon(node_fn, node, tx.clone())
+                tx.close()
+                async with rx:
+                    async for new_node in rx:
+                        new_node.parent.children.append(new_node)  # pyright: ignore[reportOptionalMemberAccess]
+                        result.append(new_node)
+        except* Exception as excgroup:
+            # Handle exception groups from task group
+            for exc in excgroup.exceptions:
+                if isinstance(exc, LLMError):
+                    raise exc
+                else:
+                    raise LLMError(
+                        "Unexpected error in LLM task group",
+                        severity=ErrorSeverity.CRITICAL,
+                        cause=exc
+                    )
         return result
 
 
