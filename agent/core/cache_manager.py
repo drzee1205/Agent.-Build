@@ -10,7 +10,7 @@ import json
 import time
 import pickle
 import os
-from typing import Any, Dict, Optional, Union, Callable, TypeVar, List
+from typing import Any, Dict, Optional, Callable, TypeVar, List
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -477,4 +477,3 @@ def invalidate_llm_cache(model: Optional[str] = None):
     if model:
         tags.append(model)
     _cache_manager.invalidate_by_tags(tags)
-

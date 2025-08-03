@@ -11,7 +11,7 @@ from llm.models_config import MODELS_MAP, ALL_MODEL_NAMES, OLLAMA_MODEL_NAMES, A
 
 from log import get_logger
 from hashlib import md5
-from core.cache_manager import get_cached_llm_response, cache_llm_response, get_cache_manager
+from core.cache_manager import get_cache_manager
 from core.performance_monitor import monitor_performance, async_performance_context
 
 try:
